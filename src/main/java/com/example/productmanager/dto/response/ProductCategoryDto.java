@@ -9,9 +9,10 @@ import java.util.Date;
 public class ProductCategoryDto {
     private Long id;
     private Product product;
-    private Category category;
+    private Category categories;
     private Date createdDate;
     private Date modifiedDate;
     private String createdBy;
     private String modifiedBy;
+    private String status;
 }
