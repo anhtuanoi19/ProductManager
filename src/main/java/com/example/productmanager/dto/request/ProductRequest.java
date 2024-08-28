@@ -28,7 +28,7 @@ public class ProductRequest {
     @Min(value = 0, message = "product.quantity.min")
     private Long quantity;
 
-    @Pattern(regexp = "^(active|inactive)$", message = "product.status.pattern")
+    @Pattern(regexp = "^(1|0)$", message = "product.status.pattern")
     private String status;
 
     private Date createdDate;

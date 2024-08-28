@@ -1,12 +1,16 @@
 package com.example.productmanager.mapper;
 
+import com.example.productmanager.dto.request.ImageDto;
 import com.example.productmanager.dto.request.ProductRequest;
+import com.example.productmanager.dto.request.ProductUpdate;
 import com.example.productmanager.dto.response.CategoryDto;
 import com.example.productmanager.dto.response.ProductDto;
+import com.example.productmanager.entity.Images;
 import com.example.productmanager.entity.Product;
 import com.example.productmanager.entity.ProductCategory;
 import org.mapstruct.Mapper;
 import org.mapstruct.Mapping;
+import org.mapstruct.Named;
 import org.mapstruct.factory.Mappers;
 
 import java.util.Collections;
@@ -24,6 +28,9 @@ public interface ProductMapper {
 
     Product toEntityProduct(ProductRequest productRequest);
 
+    Product toEntityUpdate(ProductUpdate productUpdate);
+
+
     default List<CategoryDto> mapCategories(Set<ProductCategory> productCategories) {
         if (productCategories == null) {
             return Collections.emptyList();
@@ -32,4 +39,7 @@ public interface ProductMapper {
                 .map(productCategory -> CategoryMapper.INTANCE.toDto(productCategory.getCategory()))
                 .collect(Collectors.toList());
     }
+
+
+
 }

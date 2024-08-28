@@ -8,6 +8,8 @@ public enum ErrorCode {
     INVALID_NAME(1002, "error.invalid", HttpStatus.NOT_FOUND),
     CATEGORY_LIST_NOT_FOUND(1003,"error.categoryList.notFound", HttpStatus.NOT_FOUND),
     ERROR_ADD_CATEGORY(1004, "error.add.category", HttpStatus.BAD_REQUEST),
+    CATEGORY_EXISTS(1004, "error.category.exists", HttpStatus.BAD_REQUEST),
+    PRODUCT_EXISTS(1004, "error.product.exists", HttpStatus.BAD_REQUEST),
 
 
 

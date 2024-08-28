@@ -17,6 +17,7 @@ public interface ProductRepository extends JpaRepository<Product, Long> {
             "FROM product p " +
             "JOIN product_category pc ON p.id = pc.product_id " +
             "JOIN category c ON pc.category_id = c.id " +
+            "WHERE pc.status = '1'" +
             "GROUP BY p.id, p.name, p.product_code, p.status, p.created_date, p.modified_date, " +
             "p.quantity, p.description, p.price",
             countQuery = "SELECT COUNT(DISTINCT p.id) FROM product p " +
