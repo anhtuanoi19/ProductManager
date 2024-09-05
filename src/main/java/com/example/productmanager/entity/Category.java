@@ -32,6 +32,7 @@ public class Category {
     private Date modifiedDate;
     private String createdBy;
     private String modifiedBy;
-
+    @OneToMany(mappedBy = "category", fetch = FetchType.EAGER)
+    private List<ImagesCategory> images;
 
 }

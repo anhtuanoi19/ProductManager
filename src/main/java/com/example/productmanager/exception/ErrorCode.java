@@ -10,6 +10,7 @@ public enum ErrorCode {
     ERROR_ADD_CATEGORY(1004, "error.add.category", HttpStatus.BAD_REQUEST),
     CATEGORY_EXISTS(1004, "error.category.exists", HttpStatus.BAD_REQUEST),
     PRODUCT_EXISTS(1004, "error.product.exists", HttpStatus.BAD_REQUEST),
+    CATEGORY_NOT_EXISTS(1005, "error.category.notexists", HttpStatus.BAD_REQUEST),
 
 
 

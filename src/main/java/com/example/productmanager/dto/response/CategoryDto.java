@@ -1,5 +1,7 @@
 package com.example.productmanager.dto.response;
 
+import com.example.productmanager.entity.Images;
+import com.example.productmanager.entity.ImagesCategory;
 import com.example.productmanager.entity.ProductCategory;
 import jakarta.persistence.CascadeType;
 import jakarta.persistence.OneToMany;
@@ -19,4 +21,5 @@ public class CategoryDto {
     private Date modifiedDate;
     private String createdBy;
     private String modifiedBy;
+    private List<ImagesCategory> images;
 }

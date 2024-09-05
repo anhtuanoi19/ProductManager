@@ -6,6 +6,7 @@ import jakarta.validation.constraints.PastOrPresent;
 import jakarta.validation.constraints.Pattern;
 import jakarta.validation.constraints.Size;
 import lombok.Data;
+import org.springframework.web.multipart.MultipartFile;
 
 import java.util.Date;
 import java.util.List;
@@ -38,4 +39,7 @@ public class CategoryRequest {
 
     @Size(max = 100, message = "Size.modifiedBy")
     private String modifiedBy;
+
+    private List<MultipartFile> images;
+
 }

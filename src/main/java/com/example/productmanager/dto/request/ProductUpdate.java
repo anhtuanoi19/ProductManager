@@ -1,11 +1,9 @@
 package com.example.productmanager.dto.request;
 
 import com.example.productmanager.dto.response.CategoryDto;
-import jakarta.validation.constraints.NotBlank;
-import jakarta.validation.constraints.PastOrPresent;
-import jakarta.validation.constraints.Pattern;
-import jakarta.validation.constraints.Size;
+import jakarta.validation.constraints.*;
 import lombok.Data;
+import org.springframework.web.multipart.MultipartFile;
 
 import java.util.Date;
 import java.util.List;
@@ -21,6 +19,13 @@ public class ProductUpdate {
 
     @Size(max = 255, message = "Size.description")
     private String description;
+    @DecimalMin(value = "0.0", inclusive = false, message = "product.price.decimalMin")
+    private Double price;
+
+    private String productCode;
+
+    @Min(value = 0, message = "product.quantity.min")
+    private Long quantity;
 
     @Pattern(regexp = "^(1|0)$", message = "Pattern.status")
     private String status;
@@ -41,6 +46,6 @@ public class ProductUpdate {
     private List<CategoryDto> listCategory;
     private Set<Long> categoryIds;
 
-    private List<ImageDto> listImages;  // Thêm phần danh sách hình ảnh
+    private List<MultipartFile> images;  // Thêm phần danh sách hình ảnh
 }
 

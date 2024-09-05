@@ -21,4 +21,14 @@ public interface CategoryRepository extends JpaRepository<Category, Long> {
 
     @Query("SELECT sc FROM ProductCategory sc WHERE sc.category.id = :categoryId")
     List<ProductCategory> findProductCategoryByCategoryId(@Param("categoryId") Long categoryId);
+    boolean existsByCategoryCode(String ma);
+    List<Category> findAll();
+    @Query("SELECT c FROM Category c LEFT JOIN FETCH c.images WHERE (:name IS NULL OR c.name LIKE %:name%)")
+    Page<Category> searchByName(@Param("name") String name, Pageable pageable);
+    List<Category> findByStatus(String status);
+    @Query("SELECT c FROM Category c LEFT JOIN FETCH c.images WHERE c.id = :id")
+    Category findCategoryWithImages(@Param("id") Long id);
+
+    @Query("SELECT sc FROM ProductCategory sc WHERE sc.category.id = :categoryId")
+    List<ProductCategory> findProductCategoryByIdCategory(@Param("categoryId") Long categoryId);
 }

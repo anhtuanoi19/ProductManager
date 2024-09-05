@@ -7,6 +7,7 @@ import com.example.productmanager.entity.ProductCategory;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.*;
 import lombok.Data;
+import org.springframework.web.multipart.MultipartFile;
 
 import java.util.Date;
 import java.util.List;
@@ -42,5 +43,5 @@ public class ProductRequest {
     @Valid
     private List<@Valid CategoryDto> categories;
 
-    private List<Images> images;
+    private List<MultipartFile> images;
 }

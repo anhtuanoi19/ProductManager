@@ -1,5 +1,10 @@
 package com.example.productmanager.service.impl;
 
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.web.multipart.MultipartFile;
+
+import java.io.*;
+
 import com.example.productmanager.dto.request.ProductRequest;
 import com.example.productmanager.dto.request.ProductUpdate;
 import com.example.productmanager.dto.response.ApiResponse;
@@ -32,9 +37,10 @@ import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-import java.io.ByteArrayInputStream;
-import java.io.ByteArrayOutputStream;
 import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.Paths;
 import java.util.*;
 import java.util.stream.Collectors;
 
@@ -56,28 +62,39 @@ public class ProductService implements IProductService {
     private MessageSource messageSource;
 
     @Transactional
-    @Override
     public ApiResponse<ProductDto> create(ProductRequest productRequest) {
         Locale locale = LocaleContextHolder.getLocale();
+        Random random = new Random();
+
+        // Set thông tin cơ bản cho sản phẩm
+        productRequest.setCreatedBy("admin");
+        productRequest.setProductCode("SP" + random.nextInt(10000));
+        productRequest.setModifiedDate(new Date());
+        productRequest.setModifiedBy("admin");
+        productRequest.setCreatedDate(new Date());
 
         // Tạo đối tượng Product từ ProductRequest
         Product product = ProductMapper.INTANCE.toEntityProduct(productRequest);
-        product.setCreatedDate(new Date());
-        product.setModifiedDate(new Date());
 
-        // Tạo danh sách Images từ ProductRequest
-        List<Images> images = productRequest.getImages().stream()
-                .map(imageDto -> {
+        // Xử lý lưu ảnh vào thư mục và lấy đường dẫn
+        List<Images> images = new ArrayList<>();
+        if (productRequest.getImages() != null) {
+            for (MultipartFile file : productRequest.getImages()) {
+                try {
+                    String imagePath = saveFileToLocalDirectory(file);
                     Images image = new Images();
-                    image.setUrl(imageDto.getUrl());
-                    image.setProduct(product); // 'product' here is effectively final
-                    return image;
-                }).collect(Collectors.toList());
-
-        // Thiết lập danh sách Images cho Product
-        product.setImages(new HashSet<>(images));
+                    image.setImagePath(imagePath);
+                    image.setProduct(product); // Đặt sản phẩm cho ảnh
+                    images.add(image);
+                } catch (IOException e) {
+                    // Xử lý lỗi khi lưu ảnh
+                    throw new RuntimeException("Lỗi khi lưu ảnh: " + e.getMessage(), e);
+                }
+            }
+        }
 
         // Lưu Product trước để có ID của Product cho các Images
+        product.setImages(new HashSet<>(images)); // Thiết lập danh sách Images cho Product
         productRepository.save(product);
 
         // Xử lý danh sách các thể loại
@@ -97,6 +114,8 @@ public class ProductService implements IProductService {
                     Category newCategory = CategoryMapper.INTANCE.toEntity(categoryDto);
                     newCategory.setCreatedDate(new Date());
                     newCategory.setModifiedDate(new Date());
+                    newCategory.setCreatedBy("admin");
+                    newCategory.setModifiedBy("admin");
                     return categoryRepository.save(newCategory);
                 }).collect(Collectors.toList());
 
@@ -110,12 +129,11 @@ public class ProductService implements IProductService {
                     productCategory.setCategory(category);
                     productCategory.setCreatedDate(new Date());
                     productCategory.setModifiedDate(new Date());
-                    productCategory.setCreatedBy(product.getCreatedBy());
-                    productCategory.setModifiedBy(product.getModifiedBy());
+                    productCategory.setCreatedBy("admin");
+                    productCategory.setModifiedBy("admin");
                     productCategory.setStatus("1");
                     return productCategory;
                 }).collect(Collectors.toList());
-
 
         // Lưu tất cả các ProductCategory
         productCategoryRepo.saveAll(productCategories);
@@ -126,12 +144,32 @@ public class ProductService implements IProductService {
                 .map(pc -> CategoryMapper.INTANCE.toDto(pc.getCategory()))
                 .collect(Collectors.toList());
         productDto.setCategories(categoryDtos);
+
         // Tạo ApiResponse và trả kết quả
         ApiResponse<ProductDto> apiResponse = new ApiResponse<>();
         apiResponse.setResult(productDto);
         apiResponse.setMessage(messageSource.getMessage("success.product.create", null, locale));
 
         return apiResponse;
+    }
+
+
+    // Phương thức chuyển đổi MultipartFile thành base64 encoding
+    private String convertToBase64(MultipartFile file) throws IOException {
+        byte[] bytes = file.getBytes();
+        return Base64.getEncoder().encodeToString(bytes);
+    }
+
+
+    private String saveFileToLocalDirectory(MultipartFile file) throws IOException {
+        String directory = "/Users/anhtuanle/Desktop/ProductManager/UploadImage"; // Thay đổi đường dẫn theo nhu cầu của bạn
+        String fileName = System.currentTimeMillis() + "_" + file.getOriginalFilename();
+        Path path = Paths.get(directory, fileName);
+
+        // Lưu tệp vào thư mục
+        Files.write(path, file.getBytes());
+
+        return path.toString(); // Trả về đường dẫn đầy đủ của tệp
     }
 
 
@@ -145,15 +183,19 @@ public class ProductService implements IProductService {
         // Chuyển đổi kết quả từ Object[] thành GetAllProduct
         List<GetAllProduct> products = result.getContent().stream().map(record -> {
             GetAllProduct product = new GetAllProduct();
-            product.setProductName((String) record[0]);
-            product.setProductCode((String) record[1]);
-            product.setCategoryName((String) record[2]);
-            product.setStatus((String) record[3]);
-            product.setCreateDate((Date) record[4]);
-            product.setModifiedDate((Date) record[5]);
-            product.setQuantity(((Number) record[6]).longValue());
-            product.setDescription((String) record[7]);
-            product.setPrice((Double) record[8]);
+            product.setId(((Number) record[0]).longValue()); // Chuyển đổi id thành Long
+            product.setProductName((String) record[1]);
+            product.setProductCode((String) record[2]);
+            product.setCategoryName((String) record[3]);
+            product.setStatus((String) record[4]);
+            product.setCreateDate((Date) record[5]);
+            product.setModifiedDate((Date) record[6]);
+
+            // Check for null and provide a default value if necessary
+            product.setQuantity(record[7] != null ? ((Number) record[7]).longValue() : 0L);
+
+            product.setDescription((String) record[8]);
+            product.setPrice(record[9] != null ? ((Number) record[9]).doubleValue() : 0.0);
             return product;
         }).collect(Collectors.toList());
 
@@ -165,34 +207,138 @@ public class ProductService implements IProductService {
         return apiResponse;
     }
 
-    public ByteArrayInputStream exportProductsToExcel(List<Product> products) throws IOException {
+
+    @Transactional
+    public ApiResponse<ProductDto> deleteMem(Long id) {
+        Locale locale = LocaleContextHolder.getLocale();
+
+        ApiResponse<ProductDto> apiResponse = new ApiResponse<>();
+        Product product = productRepository.findById(id)
+                .orElseThrow(() -> new AppException(ErrorCode.PRODUCT_EXISTS));
+
+        if (product.getStatus().equals("1")) {
+            product.setStatus("0");
+            product.setModifiedBy("admin");
+            product.setModifiedDate(new Date());
+            productRepository.save(product);
+
+            List<ProductCategory> productCourses = productRepository.findProductCategoryByIdProduct(product.getId());
+            productCourses.forEach(sc -> sc.setStatus("0"));
+            productCourses.forEach(sc -> sc.setModifiedDate(new Date()));
+            productCourses.forEach(sc -> sc.setModifiedBy("admin"));
+
+            productCategoryRepo.saveAll(productCourses);
+
+            ProductDto productDto = ProductMapper.INTANCE.toDto(product);
+            apiResponse.setMessage(messageSource.getMessage("success.soft.delete", null, locale));
+            apiResponse.setResult(productDto);
+        } else {
+            throw new AppException(ErrorCode.PRODUCT_EXISTS);
+        }
+        return apiResponse;
+    }
+
+
+    @Transactional
+    public ApiResponse<Page<GetAllProduct>> getPagedProductDetailsCategory(String categoryName, Pageable pageable) {
+        Locale locale = LocaleContextHolder.getLocale();
+
+        // Gọi phương thức repository với tham số tìm kiếm
+        Page<Object[]> result = productRepository.findProductDetailsWithCategories(
+                categoryName != null && !categoryName.isEmpty() ? categoryName : null,
+                pageable
+        );
+
+        // Chuyển đổi kết quả từ Object[] thành GetAllProduct
+        List<GetAllProduct> products = result.getContent().stream().map(record -> {
+            GetAllProduct product = new GetAllProduct();
+            product.setId(((Number) record[0]).longValue());
+            product.setProductName((String) record[1]);
+            product.setProductCode((String) record[2]);
+            product.setCategoryName((String) record[3]);
+            product.setStatus((String) record[4]);
+            product.setCreateDate((Date) record[5]);
+            product.setModifiedDate((Date) record[6]);
+            product.setQuantity(record[7] != null ? ((Number) record[7]).longValue() : 0L);
+            product.setDescription((String) record[8]);
+            product.setPrice(record[9] != null ? ((Number) record[9]).doubleValue() : 0.0);
+            return product;
+        }).collect(Collectors.toList());
+
+        // Tạo ApiResponse và set kết quả
+        ApiResponse<Page<GetAllProduct>> apiResponse = new ApiResponse<>();
+        apiResponse.setResult(new PageImpl<>(products, pageable, result.getTotalElements()));
+        apiResponse.setMessage(messageSource.getMessage("success.products.getAll", null, locale));
+
+        return apiResponse;
+    }
+
+
+    @Transactional
+    public ApiResponse<Page<GetAllProduct>> getPagedProductDetails(String productName, Pageable pageable) {
+        Locale locale = LocaleContextHolder.getLocale();
+
+        // Gọi phương thức repository với tham số tìm kiếm
+        Page<Object[]> result = productRepository.findProductDetailsWithCategories(
+                productName != null && !productName.isEmpty() ? productName : null,
+                pageable
+        );
+
+        // Chuyển đổi kết quả từ Object[] thành GetAllProduct
+        List<GetAllProduct> products = result.getContent().stream().map(record -> {
+            GetAllProduct product = new GetAllProduct();
+            product.setId(((Number) record[0]).longValue());
+            product.setProductName((String) record[1]);
+            product.setProductCode((String) record[2]);
+            product.setCategoryName((String) record[3]);
+            product.setStatus((String) record[4]);
+            product.setCreateDate((Date) record[5]);
+            product.setModifiedDate((Date) record[6]);
+            product.setQuantity(record[7] != null ? ((Number) record[7]).longValue() : 0L);
+            product.setDescription((String) record[8]);
+            product.setPrice(record[9] != null ? ((Number) record[9]).doubleValue() : 0.0);
+            return product;
+        }).collect(Collectors.toList());
+
+        // Tạo ApiResponse và set kết quả
+        ApiResponse<Page<GetAllProduct>> apiResponse = new ApiResponse<>();
+        apiResponse.setResult(new PageImpl<>(products, pageable, result.getTotalElements()));
+        apiResponse.setMessage(messageSource.getMessage("success.products.getAll", null, locale));
+
+        return apiResponse;
+    }
+
+    @Transactional
+
+    public ByteArrayInputStream exportProductsToExcel(List<GetAllProduct> products) throws IOException {
         try (XSSFWorkbook workbook = new XSSFWorkbook();
              ByteArrayOutputStream out = new ByteArrayOutputStream()) {
 
             Sheet sheet = workbook.createSheet("Products");
 
-            // Tạo header
+            // Create header
             Row header = sheet.createRow(0);
-            String[] columns = {"ID", "Name", "Description", "Price", "Product Code", "Quantity", "Status", "Created Date", "Modified Date"};
+            String[] columns = {"ID", "Name", "Product Code", "Category Names", "Price", "Quantity", "Status", "Created Date", "Modified Date", "Description"};
             for (int i = 0; i < columns.length; i++) {
                 Cell cell = header.createCell(i);
                 cell.setCellValue(columns[i]);
             }
 
-            // Thêm dữ liệu sản phẩm
+            // Add product data
             int rowIdx = 1;
-            for (Product product : products) {
+            for (GetAllProduct product : products) {
                 Row row = sheet.createRow(rowIdx++);
 
                 row.createCell(0).setCellValue(product.getId());
-                row.createCell(1).setCellValue(product.getName());
-                row.createCell(2).setCellValue(product.getDescription());
-                row.createCell(3).setCellValue(product.getPrice());
-                row.createCell(4).setCellValue(product.getProductCode());
+                row.createCell(1).setCellValue(product.getProductName());
+                row.createCell(2).setCellValue(product.getProductCode());
+                row.createCell(3).setCellValue(product.getCategoryName());
+                row.createCell(4).setCellValue(product.getPrice());
                 row.createCell(5).setCellValue(product.getQuantity());
                 row.createCell(6).setCellValue(product.getStatus());
-                row.createCell(7).setCellValue(product.getCreatedDate().toString());
+                row.createCell(7).setCellValue(product.getCreateDate().toString());
                 row.createCell(8).setCellValue(product.getModifiedDate().toString());
+                row.createCell(9).setCellValue(product.getDescription());
             }
 
             workbook.write(out);
@@ -200,12 +346,14 @@ public class ProductService implements IProductService {
         }
     }
 
+
     @Override
     public List<Product> findAllProducts() {
         return productRepository.findAll();
     }
 
     @Transactional
+    @Override
     public ApiResponse<ProductDto> updateProductAndCategories(ProductUpdate dto) {
         Locale locale = LocaleContextHolder.getLocale();
 
@@ -293,18 +441,36 @@ public class ProductService implements IProductService {
         productCategoryRepo.saveAll(newProductCategories);
 
         // Xử lý cập nhật hình ảnh (Images)
-        if (dto.getListImages() != null && !dto.getListImages().isEmpty()) {
-            List<Images> imagesToSave = dto.getListImages().stream()
-                    .map(imageDto -> {
-                        Images image = new Images();
-                        image.setUrl(imageDto.getUrl());
-                        image.setProduct(product);
-                        return image;
-                    })
-                    .collect(Collectors.toList());
+        List<Images> images = new ArrayList<>();
+        if (dto.getImages() != null) {
+            List<Images> existingImages = imagesRepository.findByProductId(product.getId());
+            for (Images image : existingImages) {
+                // Delete image file from the file system
+                File file = new File(image.getImagePath());
+                if (file.exists()) {
+                    file.delete();
+                }
+                imagesRepository.deleteById(image.getId());
+            }
+            imagesRepository.deleteAllByProductId(dto.getId());
 
-            imagesRepository.saveAll(imagesToSave);
+            for (MultipartFile file : dto.getImages()) {
+                try {
+                    String imagePath = saveFileToLocalDirectory(file);
+                    Images image = new Images();
+                    image.setImagePath(imagePath);
+                    image.setProduct(product); // Đặt sản phẩm cho ảnh
+                    images.add(image);
+                } catch (IOException e) {
+                    // Xử lý lỗi khi lưu ảnh
+                    throw new RuntimeException("Lỗi khi lưu ảnh: " + e.getMessage(), e);
+                }
+            }
+
+            // Lưu danh sách ảnh mới vào cơ sở dữ liệu
+            imagesRepository.saveAll(images);
         }
+
 
         // Tạo phản hồi API
         ProductDto updatedProductDto = ProductMapper.INTANCE.toDto(product);
@@ -313,6 +479,21 @@ public class ProductService implements IProductService {
         response.setMessage(messageSource.getMessage("success.update", null, locale));
 
         return response;
+    }
+
+    @Transactional
+    @Override
+    public ApiResponse<ProductDto> findById(Long id) {
+        Locale locale = LocaleContextHolder.getLocale();
+
+        Product product = productRepository.findById(id)
+                .orElseThrow(() -> new AppException(ErrorCode.PRODUCT_EXISTS));
+        ProductDto productDto = ProductMapper.INTANCE.toDto(product);
+        ApiResponse<ProductDto> apiResponse = new ApiResponse<>();
+        apiResponse.setMessage(messageSource.getMessage("success.products.getAll", null, locale));
+        apiResponse.setResult(productDto);
+
+        return apiResponse;
     }
 
 }
