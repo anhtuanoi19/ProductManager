@@ -21,7 +21,7 @@ public class CategoryRequest {
     private String description;
 
     @NotBlank(message = "NotBlank.categoryCode")
-    @Size(max = 50, message = "Size.categoryCode")
+    @Size(min = 3,max = 50, message = "Size.categoryCode")
     private String categoryCode;
 
     @Pattern(regexp = "^(1|0)$", message = "Pattern.status")

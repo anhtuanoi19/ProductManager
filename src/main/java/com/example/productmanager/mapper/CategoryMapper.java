@@ -17,9 +17,7 @@ public interface CategoryMapper {
     CategoryDto toDto(Category category);
     Category toEntity(CategoryDto categoryDto);
     Category toRequestEntity(CategoryRequest categoryRequest);
-    CategoryRequest toDtoUpdate(Category category);
     Category toEntityUpdate(CategoryUpdate categoryUpdate);
-    CategoryRequest toRequest(Category category);
 
     List<CategoryDto> toListDto(List<Category> list);
     @Mapping(target = "id", ignore = true)  // Bỏ qua ID để không ghi đè

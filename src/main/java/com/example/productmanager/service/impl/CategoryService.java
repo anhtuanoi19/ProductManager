@@ -8,12 +8,16 @@ import com.example.productmanager.entity.Category;
 import com.example.productmanager.entity.ImagesCategory;
 import com.example.productmanager.entity.ProductCategory;
 import com.example.productmanager.exception.AppException;
+import com.example.productmanager.exception.ConstraintViolationExceptionCustom;
 import com.example.productmanager.exception.ErrorCode;
 import com.example.productmanager.mapper.CategoryMapper;
 import com.example.productmanager.repository.CategoryRepository;
 import com.example.productmanager.repository.ImagesCategoryRepository;
 import com.example.productmanager.repository.ProductCategoryRepo;
 import com.example.productmanager.service.ICategoryService;
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import jakarta.validation.*;
 import org.apache.poi.ss.usermodel.Cell;
 import org.apache.poi.ss.usermodel.Row;
 import org.apache.poi.ss.usermodel.Sheet;
@@ -30,12 +34,13 @@ import org.springframework.web.multipart.MultipartFile;
 
 import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
-import java.io.File;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
+import java.time.LocalDate;
 import java.util.*;
+import java.util.stream.Collectors;
 
 @Service
 public class CategoryService implements ICategoryService {
@@ -49,6 +54,8 @@ public class CategoryService implements ICategoryService {
 
     @Autowired
     private ImagesCategoryRepository imagesCategoryRepository;
+
+
     @Transactional
     @Override
     public ApiResponse<Page<CategoryDto>> getAll(Pageable pageable) {
@@ -89,8 +96,28 @@ public class CategoryService implements ICategoryService {
     }
 
     @Transactional
-    public ApiResponse<CategoryDto> createCategory(CategoryRequest dto) {
+    public ApiResponse<CategoryDto> createCategory(String data, List<MultipartFile> images) throws JsonProcessingException {
         Locale locale = LocaleContextHolder.getLocale();
+
+        // Chuyển đổi dữ liệu từ chuỗi JSON thành đối tượng CategoryRequest
+        ObjectMapper objectMapper = new ObjectMapper();
+        CategoryRequest dto = objectMapper.readValue(data, CategoryRequest.class);
+        dto.setCreatedBy("admin");
+        // Sử dụng Validator để validate các trường trong DTO
+        ValidatorFactory factory = Validation.buildDefaultValidatorFactory();
+        Validator validator = factory.getValidator();
+
+        // Thực hiện kiểm tra ràng buộc (constraint) trên dto
+        Set<ConstraintViolation<CategoryRequest>> violations = validator.validate(dto);
+        if (!violations.isEmpty()) {
+            // Ném ra ngoại lệ nếu có lỗi ràng buộc
+            throw new ConstraintViolationExceptionCustom(violations);
+        }
+
+        // Kiểm tra xem mã danh mục có tồn tại không
+        if (categoryRepository.existsByCategoryCode(dto.getCategoryCode())) {
+            throw new AppException(ErrorCode.CATEGORY_NOT_EXISTS);
+        }
 
         // Tạo đối tượng Category từ DTO
         Category category = new Category();
@@ -100,37 +127,40 @@ public class CategoryService implements ICategoryService {
         category.setStatus(dto.getStatus());
         category.setCreatedDate(new Date());
         category.setModifiedDate(new Date());
-        category.setCreatedBy("admin");
         category.setModifiedBy("admin");
+        category.setCreatedBy("admin");
 
         // Lưu category vào database trước để lấy ID
-        categoryRepository.save(category);
+        category = categoryRepository.save(category);
 
-        // Lưu hình ảnh và tạo đối tượng ImagesCategory
-        List<ImagesCategory> images = new ArrayList<>();
-        if (dto.getImages() != null && !dto.getImages().isEmpty()) {
-            for (MultipartFile file : dto.getImages()) {
+        // Nếu có file ảnh, lưu file và tạo đối tượng ImagesCategory
+        if (images != null && !images.isEmpty()) {
+            List<ImagesCategory> imageEntities = new ArrayList<>();
+            for (MultipartFile image : images) {
                 try {
-                    String imagePath = saveFileToLocalDirectory(file);
+                    String imagePath = saveFileToLocalDirectory(image); // Lưu file ảnh vào thư mục cục bộ
                     ImagesCategory imageCategory = new ImagesCategory();
                     imageCategory.setImagePath(imagePath);
                     imageCategory.setCategory(category);
-                    images.add(imageCategory);
+                    imageCategory.setStatus(1);
+                    imageEntities.add(imageCategory);
                 } catch (IOException e) {
-                    throw new RuntimeException("Lỗi khi lưu ảnh: " + e.getMessage(), e);
+                    throw new RuntimeException("Error saving image: " + e.getMessage(), e);
                 }
             }
-            imagesCategoryRepository.saveAll(images);
+            imagesCategoryRepository.saveAll(imageEntities);
         }
 
-        // Chuyển đổi entity sang DTO để trả về response
+        // Chuyển đổi Category entity sang CategoryDto
         CategoryDto categoryDto = CategoryMapper.INTANCE.toDto(category);
+        // Tạo đối tượng ApiResponse để trả về
         ApiResponse<CategoryDto> response = new ApiResponse<>();
         response.setResult(categoryDto);
-        response.setMessage("Category created successfully!");
+        response.setMessage(messageSource.getMessage("success.create", null, locale));
 
         return response;
     }
+
 
     private String saveFileToLocalDirectory(MultipartFile file) throws IOException {
         String directory = "/Users/anhtuanle/Desktop/ProductManager/UploadImage"; // Thay đổi đường dẫn theo nhu cầu của bạn
@@ -148,60 +178,89 @@ public class CategoryService implements ICategoryService {
     public ApiResponse<CategoryDto> findById(Long id) {
         Locale locale = LocaleContextHolder.getLocale();
         ApiResponse<CategoryDto> apiResponse = new ApiResponse<>();
-        Category category = categoryRepository.findCategoryWithImages(id);
+
+        // Truy vấn để lấy tất cả các hình ảnh (không lọc theo status)
+        Category category = categoryRepository.findCategoryWithActiveImages(id);
+
+        // Lọc hình ảnh có status = 1
+        List<ImagesCategory> activeImages = category.getImages().stream()
+                .filter(image -> image.getStatus() == 1)
+                .collect(Collectors.toList());
+
+        // Cập nhật danh sách hình ảnh đã lọc vào DTO
         CategoryDto categoryDto = CategoryMapper.INTANCE.toDto(category);
-        categoryDto.setImages(category.getImages());
+        categoryDto.setImages(activeImages);
+
         apiResponse.setResult(categoryDto);
         apiResponse.setMessage(messageSource.getMessage("success.search", null, locale));
 
         return apiResponse;
     }
 
+
+
     @Transactional
     @Override
-    public ApiResponse<CategoryDto> update(Long id, CategoryUpdate request) {
+    public ApiResponse<CategoryDto> update(Long id, String data, List<MultipartFile> images) throws JsonProcessingException {
         Locale locale = LocaleContextHolder.getLocale();
         ApiResponse<CategoryDto> apiResponse = new ApiResponse<>();
 
-        request.setModifiedBy("admin");
-        request.setModifiedDate(new Date());
+        // Chuyển đổi dữ liệu từ chuỗi JSON thành đối tượng CategoryUpdate
+        ObjectMapper objectMapper = new ObjectMapper();
+        CategoryUpdate dto = objectMapper.readValue(data, CategoryUpdate.class);
+        dto.setModifiedBy("admin");
+        dto.setModifiedDate(new Date());
+
+        // Sử dụng Validator để validate các trường trong DTO
+        ValidatorFactory factory = Validation.buildDefaultValidatorFactory();
+        Validator validator = factory.getValidator();
+
+        // Thực hiện kiểm tra ràng buộc (constraint) trên DTO
+        Set<ConstraintViolation<CategoryUpdate>> violations = validator.validate(dto);
+        if (!violations.isEmpty()) {
+            throw new ConstraintViolationExceptionCustom(violations);
+        }
+
         // Lấy đối tượng Category từ database
         Category category = categoryRepository.findById(id)
-                .orElseThrow(() -> new AppException(ErrorCode.CATEGORY_EXISTS));
+                .orElseThrow(() -> new AppException(ErrorCode.CATEGORY_NOT_EXISTS));
 
         // Cập nhật thông tin của category từ DTO
-        CategoryMapper.INTANCE.updateCategoryFromDto(request, category);
+        CategoryMapper.INTANCE.updateCategoryFromDto(dto, category);
 
 
-        // Xử lý ảnh
-        if (request.getImages() != null && !request.getImages().isEmpty()) {
-            // Xóa các ảnh cũ
+        // Xử lý ảnh cũ dựa trên imagesIds
+        if (dto.getImgaesIds() != null && !dto.getImgaesIds().isEmpty()) {
             List<ImagesCategory> existingImages = imagesCategoryRepository.findByCategoryId(id);
             for (ImagesCategory image : existingImages) {
-                File file = new File(image.getImagePath());
-                if (file.exists()) {
-                    file.delete(); // Xóa file khỏi hệ thống tệp
+                if (!dto.getImgaesIds().contains(image.getId())) {
+                    image.setStatus(0);
                 }
-                imagesCategoryRepository.deleteById(image.getId()); // Xóa ảnh khỏi cơ sở dữ liệu
             }
+        }
 
-            // Upload các ảnh mới
-            List<ImagesCategory> images = new ArrayList<>();
-            for (MultipartFile file : request.getImages()) {
+        // Nếu có file ảnh mới, lưu file và tạo đối tượng ImagesCategory mới
+        if (images != null && !images.isEmpty()) {
+            List<ImagesCategory> newImages = new ArrayList<>();
+            for (MultipartFile file : images) {
                 try {
                     String imagePath = saveFileToLocalDirectory(file);
                     ImagesCategory imageCategory = new ImagesCategory();
                     imageCategory.setImagePath(imagePath);
                     imageCategory.setCategory(category);
-                    images.add(imageCategory);
+                    imageCategory.setStatus(1);
+                    newImages.add(imageCategory);
                 } catch (IOException e) {
-                    throw new RuntimeException("Lỗi khi lưu ảnh: " + e.getMessage(), e);
+                    throw new RuntimeException("Error saving image: " + e.getMessage(), e);
                 }
             }
-            imagesCategoryRepository.saveAll(images);
+            imagesCategoryRepository.saveAll(newImages);
         }
 
         // Lưu thông tin category cập nhật vào cơ sở dữ liệu
+        category = categoryRepository.save(category);
+
+        // Chuyển đổi Category entity sang CategoryDto
         CategoryDto categoryDto = CategoryMapper.INTANCE.toDto(category);
         apiResponse.setMessage(messageSource.getMessage("success.update", null, locale));
         apiResponse.setResult(categoryDto);
@@ -295,10 +354,10 @@ public class CategoryService implements ICategoryService {
 
     @Transactional
     @Override
-    public ApiResponse<Page<CategoryDto>> findByName(String title, int page, int size) {
+    public ApiResponse<Page<CategoryDto>> findByName(String name, String status, String categoryCode,LocalDate startDate, LocalDate endDate, int page, int size) {
         Locale locale = LocaleContextHolder.getLocale();
         Pageable pageable = PageRequest.of(page, size);
-        Page<Category> categoryPage = categoryRepository.searchByName(title, pageable);
+        Page<Category> categoryPage = categoryRepository.getAll(name,status,categoryCode,startDate,endDate, pageable);
 
         Page<CategoryDto> categoryDtoPage = categoryPage.map(category -> CategoryMapper.INTANCE.toDto(category));
 

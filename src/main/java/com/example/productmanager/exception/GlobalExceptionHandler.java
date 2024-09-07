@@ -2,6 +2,8 @@ package com.example.productmanager.exception;
 
 import com.example.productmanager.dto.response.ApiResponse;
 import jakarta.servlet.http.HttpServletRequest;
+import jakarta.validation.ConstraintViolation;
+import jakarta.validation.ConstraintViolationException;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.context.MessageSource;
 import org.springframework.context.i18n.LocaleContextHolder;
@@ -17,6 +19,7 @@ import org.springframework.web.method.annotation.MethodArgumentTypeMismatchExcep
 import java.util.HashMap;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Set;
 
 @ControllerAdvice
 public class GlobalExceptionHandler {
@@ -39,6 +42,23 @@ public class GlobalExceptionHandler {
                 .body(apiResponse);
     }
 
+    @ExceptionHandler(ConstraintViolationException.class)
+    public ResponseEntity<ApiResponse<Map<String, String>>> handleConstraintViolationException(ConstraintViolationException ex) {
+        Map<String, String> errors = new HashMap<>();
+        ex.getConstraintViolations().forEach(violation -> {
+            String fieldName = violation.getPropertyPath().toString();
+            String errorMessage = messageSource.getMessage(violation.getMessage(), null, LocaleContextHolder.getLocale());
+            errors.put(fieldName, errorMessage);
+        });
+
+        ApiResponse<Map<String, String>> apiResponse = new ApiResponse<>();
+        apiResponse.setCode(ErrorCode.INVALID_KEY.getCode());
+        apiResponse.setMessage(errors.values().stream().findFirst().orElse("Validation failed")); // Đưa thông báo lỗi đầu tiên vào message
+        apiResponse.setResult(errors);
+
+        return new ResponseEntity<>(apiResponse, HttpStatus.BAD_REQUEST);
+    }
+
     // Xử lý validation exception cho các field
     @ExceptionHandler(MethodArgumentNotValidException.class)
     public ResponseEntity<ApiResponse<Map<String, String>>> handleValidation(MethodArgumentNotValidException exception) {
@@ -52,7 +72,7 @@ public class GlobalExceptionHandler {
 
         ApiResponse<Map<String, String>> apiResponse = new ApiResponse<>();
         apiResponse.setCode(ErrorCode.INVALID_KEY.getCode());
-        apiResponse.setMessage(messageSource.getMessage("error.invalidInput", null, locale));
+        apiResponse.setMessage(errors.values().stream().findFirst().orElse("Validation failed")); // Đưa thông báo lỗi đầu tiên vào message
         apiResponse.setResult(errors);
 
         return ResponseEntity.status(ErrorCode.INVALID_KEY.getStatusCode()).body(apiResponse);
@@ -71,7 +91,6 @@ public class GlobalExceptionHandler {
         return new ResponseEntity<>(apiResponse, HttpStatus.BAD_REQUEST);
     }
 
-
     // Xử lý lỗi khi tham số không đúng định dạng (ví dụ: page và size không phải là số)
     @ExceptionHandler(MethodArgumentTypeMismatchException.class)
     public ResponseEntity<ApiResponse<String>> handleMethodArgumentTypeMismatch(MethodArgumentTypeMismatchException ex) {
@@ -84,7 +103,6 @@ public class GlobalExceptionHandler {
 
         return new ResponseEntity<>(apiResponse, HttpStatus.BAD_REQUEST);
     }
-
 
     // Xử lý các lỗi không xác định khác
     @ExceptionHandler(RuntimeException.class)

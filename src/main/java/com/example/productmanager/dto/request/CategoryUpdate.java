@@ -39,6 +39,7 @@ public class CategoryUpdate {
 
     @Size(max = 100, message = "Size.modifiedBy")
     private String modifiedBy;
+    private List<Long> imgaesIds;
 
     private List<MultipartFile> images;
 }

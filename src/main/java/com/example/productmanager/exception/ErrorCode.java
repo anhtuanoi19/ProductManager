@@ -12,8 +12,6 @@ public enum ErrorCode {
     PRODUCT_EXISTS(1004, "error.product.exists", HttpStatus.BAD_REQUEST),
     CATEGORY_NOT_EXISTS(1005, "error.category.notexists", HttpStatus.BAD_REQUEST),
 
-
-
     ;
 
 

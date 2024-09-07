@@ -9,6 +9,7 @@ import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
 
+import java.time.LocalDate;
 import java.util.List;
 
 @Repository
@@ -22,12 +23,27 @@ public interface CategoryRepository extends JpaRepository<Category, Long> {
     @Query("SELECT sc FROM ProductCategory sc WHERE sc.category.id = :categoryId")
     List<ProductCategory> findProductCategoryByCategoryId(@Param("categoryId") Long categoryId);
     boolean existsByCategoryCode(String ma);
+
+    @Query(value = "select distinct c " +
+            "from Category c " +
+            "left join fetch c.images i " +
+            "where c.status = :status " +
+            "and (:name is null or c.name like %:name%) " +
+            "and (:categoryCode is null or c.categoryCode like %:categoryCode%) " +
+            "and (:startDate is null or c.createdDate >= :startDate) " +
+            "and (:endDate is null or c.createdDate <= :endDate) " +
+            "order by c.modifiedDate desc")
+    Page<Category> getAll(@Param("name") String name,
+                          @Param("status") String status,
+                          @Param("categoryCode") String categoryCode,
+                          @Param("startDate") LocalDate startDate,
+                          @Param("endDate") LocalDate endDate,
+                          Pageable pageable);
+    @Query("SELECT c FROM Category c LEFT JOIN FETCH c.images")
     List<Category> findAll();
-    @Query("SELECT c FROM Category c LEFT JOIN FETCH c.images WHERE (:name IS NULL OR c.name LIKE %:name%)")
-    Page<Category> searchByName(@Param("name") String name, Pageable pageable);
     List<Category> findByStatus(String status);
-    @Query("SELECT c FROM Category c LEFT JOIN FETCH c.images WHERE c.id = :id")
-    Category findCategoryWithImages(@Param("id") Long id);
+    @Query("SELECT c FROM Category c LEFT JOIN c.images i WHERE c.id = :id AND i.status = 1")
+    Category findCategoryWithActiveImages(@Param("id") Long id);
 
     @Query("SELECT sc FROM ProductCategory sc WHERE sc.category.id = :categoryId")
     List<ProductCategory> findProductCategoryByIdCategory(@Param("categoryId") Long categoryId);

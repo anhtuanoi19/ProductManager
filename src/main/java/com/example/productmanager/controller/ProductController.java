@@ -9,13 +9,16 @@ import com.example.productmanager.dto.response.ProductDto;
 import com.example.productmanager.entity.Product;
 import com.example.productmanager.exception.AppException;
 import com.example.productmanager.exception.ErrorCode;
+import com.example.productmanager.repository.ProductRepository;
 import com.example.productmanager.service.IProductService;
+import com.example.productmanager.service.impl.ExcelExportService;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import jakarta.validation.Valid;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
+import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
@@ -25,6 +28,7 @@ import org.springframework.web.multipart.MultipartFile;
 
 import java.io.ByteArrayInputStream;
 import java.io.IOException;
+import java.time.LocalDate;
 import java.util.Arrays;
 import java.util.List;
 
@@ -34,50 +38,32 @@ public class ProductController {
     @Autowired
     private IProductService service;
 
+    @Autowired
+    private ProductRepository productRepository;
+
+    @Autowired
+    private ExcelExportService excelExportService;
+
 //    @PostMapping
 //    ApiResponse<ProductDto> create(@RequestBody @Valid ProductRequest productRequest){
 //        return service.create(productRequest);
 //    }
 
-    @GetMapping()
-    public ApiResponse<Page<GetAllProduct>> getAllStudentsPageable(
+    @GetMapping("/search")
+    public ApiResponse<Page<GetAllProduct>> getAllProductsPageable(
             @RequestParam(value = "page", required = false, defaultValue = "0") Integer page,
-            @RequestParam(value = "size", required = false, defaultValue = "10") Integer size) {
+            @RequestParam(value = "size", required = false, defaultValue = "10") Integer size,
+            @RequestParam(value = "name", required = false) String name,
+            @RequestParam(value = "productCode", required = false) String productCode,
+            @RequestParam(value = "status", required = false) String status,
+            @RequestParam(value = "startDate", required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate startDate,
+            @RequestParam(value = "endDate", required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate endDate) {
 
         Pageable pageable = PageRequest.of(page, size);
-        return service.getPagedProductDetails(pageable);
+        return service.getPagedProductDetails(pageable, name, productCode, status, startDate, endDate);
     }
 
-    @GetMapping("/export")
-    public ResponseEntity<byte[]> exportProducts() {
-        try {
-            Pageable pageable = PageRequest.of(0, Integer.MAX_VALUE); // Adjust the page size as needed
-            ApiResponse<Page<GetAllProduct>> response = service.getPagedProductDetails(pageable);
 
-            // Extract the list of products from the response
-            List<GetAllProduct> products = response.getResult().getContent();
-
-            // Assuming your export method has been updated to accept List<GetAllProduct>
-            ByteArrayInputStream in = service.exportProductsToExcel(products);
-
-            // Convert ByteArrayInputStream to byte array
-            byte[] bytes = in.readAllBytes();
-
-            HttpHeaders headers = new HttpHeaders();
-            headers.add("Content-Disposition", "attachment; filename=products.xlsx");
-            headers.setContentType(MediaType.APPLICATION_OCTET_STREAM);
-
-            return ResponseEntity
-                    .ok()
-                    .headers(headers)
-                    .body(bytes);
-
-        } catch (IOException e) {
-            return ResponseEntity
-                    .status(HttpStatus.INTERNAL_SERVER_ERROR)
-                    .body("Error occurred while generating Excel file".getBytes());
-        }
-    }
 
     @GetMapping("/findByName")
     public ResponseEntity<ApiResponse<Page<GetAllProduct>>> getProducts(
@@ -148,5 +134,21 @@ public class ProductController {
         } catch (Exception e) {
             throw new AppException(ErrorCode.UNCATEGORIZED_EXCEPTION);
         }
+    }
+
+
+    @GetMapping("/export")
+    public ResponseEntity<byte[]> downloadProductsExcel() throws IOException {
+        List<Product> products = productRepository.getAllExport();
+
+        ByteArrayInputStream in = excelExportService.exportProductsToExcel(products);
+
+        HttpHeaders headers = new HttpHeaders();
+        headers.add("Content-Disposition", "attachment; filename=products.xlsx");
+
+        return ResponseEntity.ok()
+                .headers(headers)
+                .contentType(MediaType.parseMediaType("application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"))
+                .body(in.readAllBytes());
     }
 }

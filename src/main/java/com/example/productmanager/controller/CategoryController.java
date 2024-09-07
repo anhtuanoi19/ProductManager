@@ -5,11 +5,17 @@ import com.example.productmanager.dto.request.CategoryUpdate;
 import com.example.productmanager.dto.response.ApiResponse;
 import com.example.productmanager.dto.response.CategoryDto;
 import com.example.productmanager.dto.response.ProductDto;
+import com.example.productmanager.entity.Category;
 import com.example.productmanager.exception.AppException;
+import com.example.productmanager.exception.ConstraintViolationExceptionCustom;
 import com.example.productmanager.exception.ErrorCode;
+import com.example.productmanager.repository.CategoryRepository;
 import com.example.productmanager.service.ICategoryService;
+import com.example.productmanager.service.impl.CategoryService;
+import com.example.productmanager.service.impl.ExcelExportService;
+import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import jakarta.validation.Valid;
+import jakarta.validation.*;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
@@ -23,8 +29,8 @@ import org.springframework.web.multipart.MultipartFile;
 
 import java.io.ByteArrayInputStream;
 import java.io.IOException;
-import java.util.Arrays;
-import java.util.List;
+import java.time.LocalDate;
+import java.util.*;
 
 @RestController
 @RequestMapping("/api/category")
@@ -33,24 +39,19 @@ public class CategoryController {
     @Autowired
     private ICategoryService service;
 
+    @Autowired
+    private ExcelExportService excelExportService;
+
+    @Autowired
+    private CategoryRepository categoryRepository;
+
+
     @PostMapping("/create")
     public ApiResponse<CategoryDto> createCategory(
-            @RequestParam("category") String categoryRequestJson,
-            @RequestParam(value = "files", required = false) MultipartFile[] files) {
-
-        try {
-            ObjectMapper objectMapper = new ObjectMapper();
-            CategoryRequest categoryRequest = objectMapper.readValue(categoryRequestJson, CategoryRequest.class);
-
-            if (files != null) {
-                categoryRequest.setImages(Arrays.asList(files));
-            }
-
-            return service.createCategory(categoryRequest);
-
-        } catch (Exception e) {
-            throw new AppException(ErrorCode.UNCATEGORIZED_EXCEPTION);
-        }
+            @RequestParam("data") String data,
+            @RequestParam(value = "images", required = false) List<MultipartFile> images) throws JsonProcessingException, JsonProcessingException {
+        ApiResponse<CategoryDto> response = service.createCategory(data, images);
+        return response;
     }
 
     @DeleteMapping("/xoa-mem/{id}")
@@ -59,44 +60,35 @@ public class CategoryController {
     }
 
     @GetMapping("/export")
-    public ResponseEntity<byte[]> exportCategories() {
-        try {
-            // Fetch categories from the service, ensure you call the right method
-            List<CategoryDto> categories = service.findAllE();
+    public ResponseEntity<byte[]> downloadCategoriesExcel() throws IOException {
+        List<Category> categories = categoryRepository.findAll();
 
-            // Generate Excel file
-            ByteArrayInputStream in = service.exportCategoriesToExcel(categories);
+        ByteArrayInputStream in = excelExportService.exportCategoriesToExcel(categories);
 
-            // Convert ByteArrayInputStream to byte array
-            byte[] bytes = in.readAllBytes();
+        HttpHeaders headers = new HttpHeaders();
+        headers.add("Content-Disposition", "attachment; filename=categories.xlsx");
 
-            HttpHeaders headers = new HttpHeaders();
-            headers.add("Content-Disposition", "attachment; filename=categories.xlsx");
-            headers.setContentType(MediaType.APPLICATION_OCTET_STREAM);
-
-            return ResponseEntity
-                    .ok()
-                    .headers(headers)
-                    .body(bytes);
-
-        } catch (IOException e) {
-            return ResponseEntity
-                    .status(HttpStatus.INTERNAL_SERVER_ERROR)
-                    .body("Error occurred while generating Excel file".getBytes());
-        }
+        return ResponseEntity.ok()
+                .headers(headers)
+                .contentType(MediaType.parseMediaType("application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"))
+                .body(in.readAllBytes());
     }
 
     @GetMapping("/search")
     public ApiResponse<Page<CategoryDto>> search(
             @RequestParam(required = false) String name,
+            @RequestParam(required = false) String status,
+            @RequestParam(required = false) String categorycode,
+            @RequestParam(required = false) LocalDate startDate,
+            @RequestParam(required = false) LocalDate endDate,
             @RequestParam(value = "page", required = false, defaultValue = "0") Integer page,
             @RequestParam(value = "size", required = false, defaultValue = "10") Integer size) {
-        return service.findByName(name, page, size);
+        return service.findByName(name, status, categorycode, endDate, startDate, page, size);
     }
 
 
     @GetMapping("/findById/{id}")
-    ApiResponse<CategoryDto> findById(@PathVariable Long id){
+    ApiResponse<CategoryDto> findById(@PathVariable Long id) {
         return service.findById(id);
     }
 
@@ -110,30 +102,18 @@ public class CategoryController {
     }
 
     @GetMapping("/findAll")
-    public ApiResponse<List<CategoryDto>> findAll(){
+    public ApiResponse<List<CategoryDto>> findAll() {
         return service.findAll();
     }
 
+
     @PutMapping("/update/{id}")
     public ApiResponse<CategoryDto> updateCategory(
-            @PathVariable Long id,
-            @RequestParam("category") String categoryUpdateJson,
-            @RequestParam(value = "files", required = false) MultipartFile[] files) {
-
-        try {
-            ObjectMapper objectMapper = new ObjectMapper();
-            CategoryUpdate categoryUpdate = objectMapper.readValue(categoryUpdateJson, CategoryUpdate.class);
-
-            if (files != null) {
-                // Assuming CategoryUpdate has a method to set images
-                categoryUpdate.setImages(Arrays.asList(files));
-            }
-
-            return service.update(id, categoryUpdate);
-
-        } catch (Exception e) {
-            throw new AppException(ErrorCode.UNCATEGORIZED_EXCEPTION);
-        }
+            @PathVariable("id") Long id,
+            @RequestParam("category") String category,
+            @RequestParam(value = "images", required = false) List<MultipartFile> images) throws JsonProcessingException {
+        ApiResponse<CategoryDto> response = service.update(id, category, images);
+        return response;
     }
 
 

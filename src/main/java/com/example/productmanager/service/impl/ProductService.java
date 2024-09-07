@@ -41,6 +41,7 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
+import java.time.LocalDate;
 import java.util.*;
 import java.util.stream.Collectors;
 
@@ -174,11 +175,11 @@ public class ProductService implements IProductService {
 
 
     @Transactional
-    public ApiResponse<Page<GetAllProduct>> getPagedProductDetails(Pageable pageable) {
+    public ApiResponse<Page<GetAllProduct>> getPagedProductDetails(Pageable pageable, String name, String productCode, String status, LocalDate startDate, LocalDate endDate) {
         Locale locale = LocaleContextHolder.getLocale();
 
-        // Gọi phương thức repository để lấy kết quả phân trang
-        Page<Object[]> result = productRepository.findProductDetailsWithCategories(pageable);
+        // Gọi phương thức repository để lấy kết quả phân trang với các tham số tìm kiếm
+        Page<Object[]> result = productRepository.findProductDetailsWithCategories(name, productCode, status, startDate, endDate, pageable);
 
         // Chuyển đổi kết quả từ Object[] thành GetAllProduct
         List<GetAllProduct> products = result.getContent().stream().map(record -> {
@@ -193,9 +194,9 @@ public class ProductService implements IProductService {
 
             // Check for null and provide a default value if necessary
             product.setQuantity(record[7] != null ? ((Number) record[7]).longValue() : 0L);
-
             product.setDescription((String) record[8]);
             product.setPrice(record[9] != null ? ((Number) record[9]).doubleValue() : 0.0);
+
             return product;
         }).collect(Collectors.toList());
 
@@ -206,6 +207,7 @@ public class ProductService implements IProductService {
 
         return apiResponse;
     }
+
 
 
     @Transactional
