@@ -12,7 +12,9 @@ import com.example.productmanager.exception.ErrorCode;
 import com.example.productmanager.repository.ProductRepository;
 import com.example.productmanager.service.IProductService;
 import com.example.productmanager.service.impl.ExcelExportService;
+import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import jakarta.validation.ConstraintViolationException;
 import jakarta.validation.Valid;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.data.domain.Page;
@@ -64,7 +66,6 @@ public class ProductController {
     }
 
 
-
     @GetMapping("/findByName")
     public ResponseEntity<ApiResponse<Page<GetAllProduct>>> getProducts(
             @RequestParam(value = "productName", required = false) String productName,
@@ -87,24 +88,10 @@ public class ProductController {
 
     @PutMapping("/update")
     public ApiResponse<ProductDto> updateProduct(
-            @RequestParam("product") String productUpdateJson,
-            @RequestParam("files") MultipartFile[] files) {
-
-        try {
-            // Chuyển đổi JSON request thành ProductUpdate
-            ObjectMapper objectMapper = new ObjectMapper();
-            ProductUpdate productUpdate = objectMapper.readValue(productUpdateJson, ProductUpdate.class);
-
-            // Chuyển MultipartFile[] thành List<MultipartFile> và đặt vào ProductUpdate
-            productUpdate.setImages(Arrays.asList(files));
-
-            // Cập nhật sản phẩm
-            ApiResponse<ProductDto> response = service.updateProductAndCategories(productUpdate);
-
-            return response;
-        } catch (IOException e) {
-            throw new AppException(ErrorCode.UNCATEGORIZED_EXCEPTION);
-        }
+            @RequestParam("product") String category,
+            @RequestParam(value = "images", required = false) List<MultipartFile> images) throws JsonProcessingException {
+        ApiResponse<ProductDto> response = service.updateProductAndCategories(category, images);
+        return response;
     }
     @DeleteMapping("/xoa-mem/{id}")
     public ApiResponse<ProductDto> deleteMem(@PathVariable Long id){
@@ -112,32 +99,20 @@ public class ProductController {
         return service.deleteMem(id);
     }
     @GetMapping("/findById/{id}")
-    public ApiResponse<ProductDto> findById(@PathVariable Long id){
+    public ApiResponse<ProductDto> findById(@PathVariable Long id) {
         return service.findById(id);
     }
 
     @PostMapping("/create")
-    public ApiResponse<ProductDto> createProduct(
-            @RequestParam("product") String productRequestJson,
-            @RequestParam(value = "files", required = false) MultipartFile[] files) {
-
-        try {
-            ObjectMapper objectMapper = new ObjectMapper();
-            ProductRequest productRequest = objectMapper.readValue(productRequestJson, ProductRequest.class);
-
-            if (files != null) {
-                productRequest.setImages(Arrays.asList(files));
-            }
-
-            return service.create(productRequest);
-
-        } catch (Exception e) {
-            throw new AppException(ErrorCode.UNCATEGORIZED_EXCEPTION);
-        }
+    public ApiResponse<ProductDto> createCategory(
+            @RequestParam("data") String data,
+            @RequestParam(value = "images", required = false) List<MultipartFile> images) throws JsonProcessingException, JsonProcessingException {
+        ApiResponse<ProductDto> response = service.create(data, images);
+        return response;
     }
 
 
-    @GetMapping("/export")
+        @GetMapping("/export")
     public ResponseEntity<byte[]> downloadProductsExcel() throws IOException {
         List<Product> products = productRepository.getAllExport();
 

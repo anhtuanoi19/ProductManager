@@ -352,6 +352,18 @@ public class CategoryService implements ICategoryService {
         }
     }
 
+    @Override
+    public ApiResponse<List<CategoryDto>> findCategoriesByProductIdAndStatus(Long productId) {
+        Locale locale = LocaleContextHolder.getLocale();
+
+        ApiResponse<List<CategoryDto>> apiResponse = new ApiResponse<>();
+        List<Category> category = categoryRepository.findCategoriesByProductIdAndStatus(productId);
+        List<CategoryDto> categoryDto = CategoryMapper.INTANCE.toListDto(category);
+        apiResponse.setMessage(messageSource.getMessage("success.search", null, locale));
+        apiResponse.setResult(categoryDto);
+        return apiResponse;
+    }
+
     @Transactional
     @Override
     public ApiResponse<Page<CategoryDto>> findByName(String name, String status, String categoryCode,LocalDate startDate, LocalDate endDate, int page, int size) {

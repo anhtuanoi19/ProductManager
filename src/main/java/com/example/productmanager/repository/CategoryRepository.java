@@ -1,6 +1,7 @@
 package com.example.productmanager.repository;
 
 import com.example.productmanager.entity.Category;
+import com.example.productmanager.entity.Product;
 import com.example.productmanager.entity.ProductCategory;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
@@ -11,6 +12,7 @@ import org.springframework.stereotype.Repository;
 
 import java.time.LocalDate;
 import java.util.List;
+import java.util.Set;
 
 @Repository
 public interface CategoryRepository extends JpaRepository<Category, Long> {
@@ -19,11 +21,12 @@ public interface CategoryRepository extends JpaRepository<Category, Long> {
 
     @Query("SELECT c FROM Category c WHERE c.id IN :categoryIds")
     List<Category> findAllByIds(@Param("categoryIds") List<Long> categoryIds);
-
     @Query("SELECT sc FROM ProductCategory sc WHERE sc.category.id = :categoryId")
     List<ProductCategory> findProductCategoryByCategoryId(@Param("categoryId") Long categoryId);
     boolean existsByCategoryCode(String ma);
 
+    @Query("SELECT c FROM Category c LEFT JOIN FETCH c.images WHERE c.id IN :ids")
+    List<Category> findAllByIdIn(@Param("ids") List<Long> ids);
     @Query(value = "select distinct c " +
             "from Category c " +
             "left join fetch c.images i " +
@@ -41,8 +44,13 @@ public interface CategoryRepository extends JpaRepository<Category, Long> {
                           Pageable pageable);
     @Query("SELECT c FROM Category c LEFT JOIN FETCH c.images")
     List<Category> findAll();
+    @Query("SELECT pc.category FROM ProductCategory pc " +
+            "LEFT JOIN FETCH pc.category.images img " +
+            "WHERE pc.product.id = :productId AND pc.status = '1'")
+    List<Category> findCategoriesByProductIdAndStatus(@Param("productId") Long productId);
+
     List<Category> findByStatus(String status);
-    @Query("SELECT c FROM Category c LEFT JOIN c.images i WHERE c.id = :id AND i.status = 1")
+    @Query("SELECT c FROM Category c LEFT JOIN fetch c.images i WHERE c.id = :id AND i.status = 1")
     Category findCategoryWithActiveImages(@Param("id") Long id);
 
     @Query("SELECT sc FROM ProductCategory sc WHERE sc.category.id = :categoryId")

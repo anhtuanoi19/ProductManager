@@ -1,5 +1,10 @@
 package com.example.productmanager.service.impl;
 
+import com.example.productmanager.entity.*;
+import com.example.productmanager.exception.ConstraintViolationExceptionCustom;
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import jakarta.validation.*;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.web.multipart.MultipartFile;
 
@@ -11,10 +16,6 @@ import com.example.productmanager.dto.response.ApiResponse;
 import com.example.productmanager.dto.response.CategoryDto;
 import com.example.productmanager.dto.response.GetAllProduct;
 import com.example.productmanager.dto.response.ProductDto;
-import com.example.productmanager.entity.Category;
-import com.example.productmanager.entity.Images;
-import com.example.productmanager.entity.Product;
-import com.example.productmanager.entity.ProductCategory;
 import com.example.productmanager.exception.AppException;
 import com.example.productmanager.exception.ErrorCode;
 import com.example.productmanager.mapper.CategoryMapper;
@@ -43,6 +44,7 @@ import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.time.LocalDate;
 import java.util.*;
+import java.util.function.Function;
 import java.util.stream.Collectors;
 
 @Service
@@ -62,30 +64,48 @@ public class ProductService implements IProductService {
     @Autowired
     private MessageSource messageSource;
 
+
     @Transactional
-    public ApiResponse<ProductDto> create(ProductRequest productRequest) {
+    public ApiResponse<ProductDto> create(String data, List<MultipartFile> files) throws JsonProcessingException {
         Locale locale = LocaleContextHolder.getLocale();
-        Random random = new Random();
+
+        // Chuyển đổi dữ liệu từ chuỗi JSON thành đối tượng ProductRequest
+        ObjectMapper objectMapper = new ObjectMapper();
+        ProductRequest productRequest = objectMapper.readValue(data, ProductRequest.class);
 
         // Set thông tin cơ bản cho sản phẩm
         productRequest.setCreatedBy("admin");
-        productRequest.setProductCode("SP" + random.nextInt(10000));
         productRequest.setModifiedDate(new Date());
         productRequest.setModifiedBy("admin");
         productRequest.setCreatedDate(new Date());
+
+        // Sử dụng Validator để validate các trường trong ProductRequest
+        ValidatorFactory factory = Validation.buildDefaultValidatorFactory();
+        Validator validator = factory.getValidator();
+        Set<ConstraintViolation<ProductRequest>> violations = validator.validate(productRequest);
+        if (!violations.isEmpty()) {
+            // Ném ra ngoại lệ nếu có lỗi ràng buộc
+            throw new ConstraintViolationExceptionCustom(violations);
+        }
+
+        // Kiểm tra xem mã sản phẩm có tồn tại không
+        if (productRepository.existsByProductCode(productRequest.getProductCode())) {
+            throw new AppException(ErrorCode.PRODUCT_NOT_EXISTS);
+        }
 
         // Tạo đối tượng Product từ ProductRequest
         Product product = ProductMapper.INTANCE.toEntityProduct(productRequest);
 
         // Xử lý lưu ảnh vào thư mục và lấy đường dẫn
         List<Images> images = new ArrayList<>();
-        if (productRequest.getImages() != null) {
-            for (MultipartFile file : productRequest.getImages()) {
+        if (files != null && !files.isEmpty()) {
+            for (MultipartFile file : files) {
                 try {
                     String imagePath = saveFileToLocalDirectory(file);
                     Images image = new Images();
                     image.setImagePath(imagePath);
                     image.setProduct(product); // Đặt sản phẩm cho ảnh
+                    image.setStatus(1);
                     images.add(image);
                 } catch (IOException e) {
                     // Xử lý lỗi khi lưu ảnh
@@ -98,31 +118,41 @@ public class ProductService implements IProductService {
         product.setImages(new HashSet<>(images)); // Thiết lập danh sách Images cho Product
         productRepository.save(product);
 
-        // Xử lý danh sách các thể loại
+        // Lấy tất cả categoryIds từ ProductRequest
         List<Long> categoryIds = productRequest.getCategories().stream()
                 .map(CategoryDto::getId)
+                .filter(Objects::nonNull) // Lọc ra các category đã tồn tại
                 .collect(Collectors.toList());
 
-        List<Category> existingCategories = categoryRepository.findAllByIds(categoryIds);
+        // Truy vấn tất cả các Category bằng 1 lần query
+        List<Category> existingCategories = categoryRepository.findAllByIdIn(categoryIds);
 
-        Set<Long> existingCategoryIds = existingCategories.stream()
-                .map(Category::getId)
-                .collect(Collectors.toSet());
-
+        // Tìm các Category mới từ ProductRequest
         List<Category> newCategories = productRequest.getCategories().stream()
-                .filter(categoryDto -> categoryDto.getId() == null || !existingCategoryIds.contains(categoryDto.getId()))
+                .filter(categoryDto -> categoryDto.getId() == null) // Lọc các category mới (không có id)
                 .map(categoryDto -> {
                     Category newCategory = CategoryMapper.INTANCE.toEntity(categoryDto);
+                    if (categoryRepository.existsByCategoryCode(categoryDto.getCategoryCode())){
+                        throw new AppException(ErrorCode.CATEGORY_NOT_EXISTS);
+                    }
                     newCategory.setCreatedDate(new Date());
                     newCategory.setModifiedDate(new Date());
                     newCategory.setCreatedBy("admin");
                     newCategory.setModifiedBy("admin");
-                    return categoryRepository.save(newCategory);
-                }).collect(Collectors.toList());
+                    return newCategory;
+                })
+                .collect(Collectors.toList());
 
+        // Lưu danh sách các Category mới 1 lần thay vì từng cái
+        if (!newCategories.isEmpty()) {
+            categoryRepository.saveAll(newCategories);
+        }
+
+        // Kết hợp danh sách category đã tồn tại và category mới
         List<Category> allCategories = new ArrayList<>(existingCategories);
         allCategories.addAll(newCategories);
 
+        // Tạo các ProductCategory và gán category cho product
         List<ProductCategory> productCategories = allCategories.stream()
                 .map(category -> {
                     ProductCategory productCategory = new ProductCategory();
@@ -136,7 +166,7 @@ public class ProductService implements IProductService {
                     return productCategory;
                 }).collect(Collectors.toList());
 
-        // Lưu tất cả các ProductCategory
+        // Lưu tất cả các ProductCategory trong 1 lần query
         productCategoryRepo.saveAll(productCategories);
 
         // Chuyển đổi Product thành ProductDto và set danh sách categories
@@ -153,6 +183,9 @@ public class ProductService implements IProductService {
 
         return apiResponse;
     }
+
+
+
 
 
     // Phương thức chuyển đổi MultipartFile thành base64 encoding
@@ -356,123 +389,129 @@ public class ProductService implements IProductService {
 
     @Transactional
     @Override
-    public ApiResponse<ProductDto> updateProductAndCategories(ProductUpdate dto) {
+    public ApiResponse<ProductDto> updateProductAndCategories(String data, List<MultipartFile> files) throws JsonProcessingException {
         Locale locale = LocaleContextHolder.getLocale();
+
+        // Chuyển đổi dữ liệu từ chuỗi JSON thành đối tượng ProductUpdate
+        ObjectMapper objectMapper = new ObjectMapper();
+        ProductUpdate dto = objectMapper.readValue(data, ProductUpdate.class);
+
+        // Sử dụng Validator để validate các trường trong ProductUpdate
+        ValidatorFactory factory = Validation.buildDefaultValidatorFactory();
+        Validator validator = factory.getValidator();
+        Set<ConstraintViolation<ProductUpdate>> violations = validator.validate(dto);
+        if (!violations.isEmpty()) {
+            throw new ConstraintViolationExceptionCustom(violations);
+        }
 
         Product product = productRepository.findById(dto.getId())
                 .orElseThrow(() -> new AppException(ErrorCode.PRODUCT_EXISTS));
 
-        product.setName(dto.getName());
-        product.setDescription(dto.getDescription());
-        product.setStatus(dto.getStatus());
-        product.setCreatedDate(dto.getCreatedDate());
-        product.setModifiedDate(dto.getModifiedDate());
-        product.setCreatedBy(dto.getCreatedBy());
-        product.setModifiedBy(dto.getModifiedBy());
+        ProductMapper.INTANCE.updateProductFromDto(dto, product);
+        product.setModifiedDate(new Date());
+        product.setModifiedBy("admin");
+        productRepository.save(product);
 
-        if (product.getStatus().equals("0")) {
-            productRepository.save(product);
-
-            List<ProductCategory> productCategories = productCategoryRepo.findByProductId(product.getId());
-            productCategories.forEach(pc -> pc.setStatus("0"));
-            productCategoryRepo.saveAll(productCategories);
-        } else {
-            productRepository.save(product);
-        }
-
-        // Xử lý cập nhật danh mục (Category)
+        // Lấy danh mục hiện tại và các danh mục mới cần thêm
         List<Long> currentCategoryIds = productCategoryRepo.findCategoryIdsByProductId(product.getId());
-
         Set<Long> newCategoryIds = new HashSet<>(dto.getCategoryIds());
 
-        // Xử lý các danh mục mới
-        if (dto.getListCategory() != null && !dto.getListCategory().isEmpty()) {
-            // Sử dụng CategoryMapper để ánh xạ từ CategoryDto sang Category
+        // Lọc danh mục mới từ listCategory và kiểm tra trùng lặp code
+        Set<String> newCategoryCodes = dto.getListCategory().stream()
+                .filter(categoryDto -> categoryDto.getId() == null)
+                .map(CategoryDto::getCategoryCode)
+                .collect(Collectors.toSet());
+
+        if (!newCategoryCodes.isEmpty()) {
+            // Kiểm tra trùng lặp code trong cơ sở dữ liệu
+            if (categoryRepository.existsByCategoryCode(dto.getProductCode())) {
+                throw new AppException(ErrorCode.CATEGORY_NOT_EXISTS);
+            }
+
+            // Tạo và lưu các danh mục mới
             List<Category> categoriesToSave = dto.getListCategory().stream()
-                    .filter(categoryDto -> categoryDto.getId() == null) // Chỉ xử lý những category chưa có ID (mới)
+                    .filter(categoryDto -> categoryDto.getId() == null)
                     .map(categoryDto -> {
-                        Category newCategory = CategoryMapper.INTANCE.toEntity(categoryDto); // Ánh xạ sang thực thể Category
-
-                        // Thiết lập các giá trị mặc định
-                        newCategory.setCreatedDate(new Date()); // Ngày tạo mới
-                        newCategory.setModifiedDate(new Date()); // Ngày sửa mới
-                        newCategory.setModifiedBy("admin"); // Người sửa là 'admin'
-                        newCategory.setCreatedBy("admin"); // Người sửa là 'admin'
-
+                        Category newCategory = CategoryMapper.INTANCE.toEntity(categoryDto);
+                        newCategory.setCreatedDate(new Date());
+                        newCategory.setModifiedDate(new Date());
+                        newCategory.setModifiedBy("admin");
+                        newCategory.setCreatedBy("admin");
                         return newCategory;
                     })
                     .collect(Collectors.toList());
 
-            List<Category> savedCategories = categoryRepository.saveAll(categoriesToSave);
-
-            savedCategories.forEach(category -> newCategoryIds.add(category.getId()));
+            if (!categoriesToSave.isEmpty()) {
+                categoryRepository.saveAll(categoriesToSave);
+                categoriesToSave.forEach(category -> newCategoryIds.add(category.getId()));
+            }
         }
 
-        Set<Long> categoriesToDeactivate = currentCategoryIds.stream()
-                .filter(id -> !newCategoryIds.contains(id))
-                .collect(Collectors.toSet());
+        // Xử lý các danh mục cần vô hiệu hóa
+        Set<Long> categoriesToDeactivate = new HashSet<>(currentCategoryIds);
+        categoriesToDeactivate.removeAll(newCategoryIds);
 
         if (!categoriesToDeactivate.isEmpty()) {
             productCategoryRepo.updateStatusByProductIdAndCategoryIds(product.getId(), categoriesToDeactivate);
         }
 
-        List<Category> categories = categoryRepository.findAllById(new ArrayList<>(newCategoryIds));
-
-        for (Category category : categories) {
-            if (category.getStatus().equals("0")) {
-                throw new AppException(ErrorCode.CATEGORY_EXISTS);
-            }
-        }
+        // Xử lý các danh mục mới 1 ở đây
+        List<Category> categories = categoryRepository.findAllByIdIn(new ArrayList<>(newCategoryIds));
+        Map<Long, Category> categoryMap = categories.stream()
+                .collect(Collectors.toMap(Category::getId, Function.identity()));
 
         Set<ProductCategory> newProductCategories = categories.stream()
                 .map(category -> {
-                    ProductCategory productCategory = productCategoryRepo.findByProductIdAndCategoryId(product.getId(), category.getId())
-                            .orElseGet(() -> new ProductCategory());
-                    productCategory.setProduct(product);
-                    productCategory.setCategory(category);
-                    productCategory.setStatus(dto.getStatus());
-                    productCategory.setModifiedBy("admin");
-                    productCategory.setModifiedDate(new Date());
-                    productCategory.setCreatedBy("admin");
-                    productCategory.setCreatedDate(new Date());
-                    productCategory.setStatus(dto.getStatus());
-                    return productCategory;
+                    return productCategoryRepo.findByProductIdAndCategoryId(product.getId(), category.getId())
+                            .map(pc -> {
+                                pc.setStatus(dto.getStatus());
+                                pc.setModifiedBy("admin");
+                                pc.setModifiedDate(new Date());
+                                return pc;
+                            })
+                            .orElseGet(() -> {
+                                ProductCategory pc = new ProductCategory();
+                                pc.setProduct(product);
+                                pc.setCategory(category);
+                                pc.setStatus(dto.getStatus());
+                                pc.setModifiedBy("admin");
+                                pc.setModifiedDate(new Date());
+                                pc.setCreatedBy("admin");
+                                pc.setCreatedDate(new Date());
+                                return pc;
+                            });
                 })
                 .collect(Collectors.toSet());
 
         productCategoryRepo.saveAll(newProductCategories);
 
         // Xử lý cập nhật hình ảnh (Images)
-        List<Images> images = new ArrayList<>();
-        if (dto.getImages() != null) {
-            List<Images> existingImages = imagesRepository.findByProductId(product.getId());
-            for (Images image : existingImages) {
-                // Delete image file from the file system
-                File file = new File(image.getImagePath());
-                if (file.exists()) {
-                    file.delete();
-                }
-                imagesRepository.deleteById(image.getId());
-            }
-            imagesRepository.deleteAllByProductId(dto.getId());
+        Set<Long> imagesIdsToKeep = new HashSet<>(dto.getImagesIds());
+        List<Images> existingImages = imagesRepository.findByProductId(product.getId());
 
-            for (MultipartFile file : dto.getImages()) {
+        // Vô hiệu hóa ảnh không còn trong danh sách
+        existingImages.stream()
+                .filter(image -> !imagesIdsToKeep.contains(image.getId()))
+                .forEach(image -> {
+                    image.setStatus(0);
+                    imagesRepository.save(image);
+                });
+
+        // Xử lý ảnh mới từ tệp tin
+        if (files != null && !files.isEmpty()) {
+            for (MultipartFile file : files) {
                 try {
                     String imagePath = saveFileToLocalDirectory(file);
-                    Images image = new Images();
-                    image.setImagePath(imagePath);
-                    image.setProduct(product); // Đặt sản phẩm cho ảnh
-                    images.add(image);
+                    Images newImage = new Images();
+                    newImage.setImagePath(imagePath);
+                    newImage.setProduct(product);
+                    newImage.setStatus(1);
+                    imagesRepository.save(newImage);
                 } catch (IOException e) {
-                    // Xử lý lỗi khi lưu ảnh
                     throw new RuntimeException("Lỗi khi lưu ảnh: " + e.getMessage(), e);
                 }
             }
-
-            // Lưu danh sách ảnh mới vào cơ sở dữ liệu
-            imagesRepository.saveAll(images);
         }
-
 
         // Tạo phản hồi API
         ProductDto updatedProductDto = ProductMapper.INTANCE.toDto(product);
@@ -483,17 +522,30 @@ public class ProductService implements IProductService {
         return response;
     }
 
+
+
+
+
     @Transactional
     @Override
     public ApiResponse<ProductDto> findById(Long id) {
         Locale locale = LocaleContextHolder.getLocale();
-
-        Product product = productRepository.findById(id)
-                .orElseThrow(() -> new AppException(ErrorCode.PRODUCT_EXISTS));
-        ProductDto productDto = ProductMapper.INTANCE.toDto(product);
         ApiResponse<ProductDto> apiResponse = new ApiResponse<>();
-        apiResponse.setMessage(messageSource.getMessage("success.products.getAll", null, locale));
+
+        // Truy vấn để lấy tất cả các hình ảnh (không lọc theo status)
+        Product product = productRepository.findByIdProduct(id);
+
+        // Lọc hình ảnh có status = 1
+        List<Images> activeImages = product.getImages().stream()
+                .filter(image -> image.getStatus() == 1)
+                .collect(Collectors.toList());
+
+        // Cập nhật danh sách hình ảnh đã lọc vào DTO
+        ProductDto productDto = ProductMapper.INTANCE.toDto(product);
+        productDto.setImages(activeImages);
+
         apiResponse.setResult(productDto);
+        apiResponse.setMessage(messageSource.getMessage("success.search", null, locale));
 
         return apiResponse;
     }

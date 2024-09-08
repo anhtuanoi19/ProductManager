@@ -3,6 +3,7 @@ package com.example.productmanager.service;
 import com.example.productmanager.dto.request.CategoryUpdate;
 import com.example.productmanager.dto.response.ApiResponse;
 import com.example.productmanager.dto.response.CategoryDto;
+import com.example.productmanager.entity.Category;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
@@ -24,4 +25,6 @@ public interface ICategoryService {
     ApiResponse<CategoryDto> open(Long id);
     ApiResponse<Page<CategoryDto>> findByName(String name, String status, String categoryCode, LocalDate startDate, LocalDate endDate, int page, int size);
     ByteArrayInputStream exportCategoriesToExcel(List<CategoryDto> categories) throws IOException;
+    ApiResponse<List<CategoryDto>> findCategoriesByProductIdAndStatus(Long productId);
+
 }

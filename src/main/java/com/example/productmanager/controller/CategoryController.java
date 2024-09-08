@@ -85,7 +85,10 @@ public class CategoryController {
             @RequestParam(value = "size", required = false, defaultValue = "10") Integer size) {
         return service.findByName(name, status, categorycode, endDate, startDate, page, size);
     }
-
+    @GetMapping("/findByIdProduct/{id}")
+    ApiResponse<List<CategoryDto>> findCategoriesByProductIdAndStatus(@PathVariable Long id){
+        return service.findCategoriesByProductIdAndStatus(id);
+    }
 
     @GetMapping("/findById/{id}")
     ApiResponse<CategoryDto> findById(@PathVariable Long id) {

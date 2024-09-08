@@ -21,4 +21,5 @@ public class Images {
     @JoinColumn(name = "product_id", nullable = false)
     @JsonBackReference
     private Product product;
+    private Integer status;
 }

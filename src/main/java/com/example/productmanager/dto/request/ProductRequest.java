@@ -24,6 +24,8 @@ public class ProductRequest {
     @DecimalMin(value = "0.0", inclusive = false, message = "product.price.decimalMin")
     private Double price;
 
+    @NotBlank(message = "NotBlank.code")
+    @Size(min = 3, max = 100, message = "Size.code")
     private String productCode;
 
     @Min(value = 0, message = "product.quantity.min")

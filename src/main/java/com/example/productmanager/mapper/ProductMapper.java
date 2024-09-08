@@ -10,6 +10,7 @@ import com.example.productmanager.entity.Product;
 import com.example.productmanager.entity.ProductCategory;
 import org.mapstruct.Mapper;
 import org.mapstruct.Mapping;
+import org.mapstruct.MappingTarget;
 import org.mapstruct.Named;
 import org.mapstruct.factory.Mappers;
 
@@ -39,6 +40,9 @@ public interface ProductMapper {
                 .map(productCategory -> CategoryMapper.INTANCE.toDto(productCategory.getCategory()))
                 .collect(Collectors.toList());
     }
+
+    @Mapping(target = "id", ignore = true)
+    void updateProductFromDto(ProductUpdate dto, @MappingTarget Product product);
 
 
 

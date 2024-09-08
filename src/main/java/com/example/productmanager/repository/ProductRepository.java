@@ -1,5 +1,6 @@
 package com.example.productmanager.repository;
 
+import com.example.productmanager.entity.Category;
 import com.example.productmanager.entity.Product;
 import com.example.productmanager.entity.ProductCategory;
 import org.springframework.data.domain.Page;
@@ -55,6 +56,10 @@ public interface ProductRepository extends JpaRepository<Product, Long> {
             "left join fetch c.images ic " +
             "order by p.createdDate desc ")
     List<Product> getAllExport();
+    boolean existsByProductCode(String ma);
+
+    @Query("SELECT c FROM Product c LEFT JOIN fetch c.images i WHERE c.id = :id AND i.status = 1 and c.status = '1'")
+    Product findByIdProduct(@Param("id") Long id);
 
     @Query("SELECT sc FROM ProductCategory sc WHERE sc.product.id = :productId")
     List<ProductCategory> findProductCategoryByIdProduct(@Param("productId") Long productId);

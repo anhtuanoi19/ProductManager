@@ -22,6 +22,8 @@ public class ProductUpdate {
     @DecimalMin(value = "0.0", inclusive = false, message = "product.price.decimalMin")
     private Double price;
 
+    @NotBlank(message = "NotBlank.code")
+    @Size(min = 3, max = 100, message = "Size.code")
     private String productCode;
 
     @Min(value = 0, message = "product.quantity.min")
@@ -30,21 +32,15 @@ public class ProductUpdate {
     @Pattern(regexp = "^(1|0)$", message = "Pattern.status")
     private String status;
 
-    @PastOrPresent(message = "PastOrPresent.createdDate")
-    private Date createdDate;
-
     @PastOrPresent(message = "PastOrPresent.modifiedDate")
     private Date modifiedDate;
-
-    @NotBlank(message = "NotBlank.createdBy")
-    @Size(max = 100, message = "Size.createdBy")
-    private String createdBy;
 
     @Size(max = 100, message = "Size.modifiedBy")
     private String modifiedBy;
 
     private List<CategoryDto> listCategory;
     private Set<Long> categoryIds;
+    private Set<Long> imagesIds;
 
     private List<MultipartFile> images;  // Thêm phần danh sách hình ảnh
 }
